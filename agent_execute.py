@@ -14,32 +14,39 @@ MODEL = "llama3.1:8b"
 ROBOT_IP = "192.168.1.226"     # put your real robot IP
 
 SYSTEM_PROMPT = """
-You translate human commands into robot JSON.
+You translate natural language commands into robot actions.
+Output ONLY minified JSON.
 
-Schema options:
-- {"action":"go_home","speed":0.2,"acc":0.5}
-- {"action":"go_pose","target":"<pose_name>","speed":0.2,"acc":0.5}
-- {"action":"joint_move","joint":<index>,"delta":<float>,"speed":0.2,"acc":0.5}
+Available pose names:
+- "home_j"
+- "box_approach_l", "box_pick_l"
+- "bin_a_approach_l", "bin_a_drop_l"
 
-Available named poses:
-"home_j",
-"above_box_l",
-"pick_box_l",
-"bin_a_above_l",
-"bin_a_drop_l"
+JSON schemas:
+1) Go home
+{"action":"go_home","speed":0.2,"acc":0.5}
+
+2) Go to pose
+{"action":"go_pose","target":"box_approach_l","speed":0.2,"acc":0.5}
+
+3) Joint delta
+{"action":"joint_move","joint":1,"delta":0.1,"speed":0.2,"acc":0.5}
+
+4) Pick (3-step)
+{"action":"pick","approach":"box_approach_l","pick":"box_pick_l","retreat":"box_approach_l","speed":0.2,"acc":0.5}
+
+5) Place (3-step)
+{"action":"place","approach":"bin_a_approach_l","drop":"bin_a_drop_l","retreat":"bin_a_approach_l","speed":0.2,"acc":0.5}
 
 Mappings:
-- "go home" → action go_home
-- "go above the box" → go_pose above_box_l
-- "move to pick position" → go_pose pick_box_l
-- "go above bin A" → go_pose bin_a_above_l
-- "drop inside bin A" → go_pose bin_a_drop_l
+- "pick the box" → {"action":"pick", "approach":"box_approach_l", "pick":"box_pick_l", "retreat":"box_approach_l", ...}
+- "place it in bin A" → {"action":"place", "approach":"bin_a_approach_l", "drop":"bin_a_drop_l", "retreat":"bin_a_approach_l"}
 
 Rules:
-- Output ONLY minified JSON (no markdown).
-- speed=0.2 acc=0.5 unless user provides different values.
-- If the user says “move left/right/up/down”, you still use joint_move.
+- Output ONLY JSON.
+- No extra text, no markdown.
 """
+
 
 
 # ----------------------------

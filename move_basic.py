@@ -1,41 +1,91 @@
 #!/usr/bin/env python3
-import sys, time, json
+import sys, time, json, pathlib
 from rtde_control import RTDEControlInterface
 
-ROBOT_IP = "192.168.1.226"  # adjust to your real one
-HOME = [0, -1.57, 1.57, 0, 1.57, 0]
+ROBOT_IP = "192.168.1.226"
 VEL, ACC = 0.2, 0.5
 
+def load_poses():
+    p = pathlib.Path("poses.json")
+    if not p.exists():
+        print("[ERROR] poses.json not found.")
+        return {}
+    return json.loads(p.read_text())
+
+def move_pose(rtde_c, pose, speed, acc):
+    if isinstance(pose, str):
+        raise ValueError("Pose should be list of 6 floats, not string.")
+    if len(pose) != 6:
+        raise ValueError("Pose must have length 6.")
+    rtde_c.moveL(pose, speed=speed, acceleration=acc)
+
+def move_joint(rtde_c, joints, speed, acc):
+    rtde_c.moveJ(joints, speed=speed, acceleration=acc)
+
 def main(cmd: dict):
-    # connect to the robot controller
     rtde_c = RTDEControlInterface(ROBOT_IP)
+    poses = load_poses()
 
-    if cmd["action"] == "go_home":
-        # simple moveJ to home
-        rtde_c.moveJ(HOME, speed=cmd.get("speed",VEL), acceleration=cmd.get("acc",ACC))
+    action = cmd["action"]
+    speed = cmd.get("speed", VEL)
+    acc   = cmd.get("acc",   ACC)
 
-    elif cmd["action"] == "joint_move":
-        # read current joint angles
+    # ------------------------------------------------------------------
+    # BASIC ACTIONS
+    # ------------------------------------------------------------------
+    if action == "go_home":
+        home = poses["home_j"]
+        move_joint(rtde_c, home, speed, acc)
+
+    elif action == "go_pose":
+        pose_name = cmd["target"]
+        pose = poses[pose_name]
+        if pose_name.endswith("_j"):
+            move_joint(rtde_c, pose, speed, acc)
+        else:
+            move_pose(rtde_c, pose, speed, acc)
+
+    elif action == "joint_move":
         q = rtde_c.getActualQ()
-        # choose joint index
         j = cmd["joint"]
-        # apply delta to the chosen joint
         q[j] += cmd["delta"]
-        # perform the move
-        rtde_c.moveJ(q, speed=cmd.get("speed",VEL), acceleration=cmd.get("acc",ACC))
+        move_joint(rtde_c, q, speed, acc)
+
+    # ------------------------------------------------------------------
+    # PICK ACTION: approach → pick → retreat
+    # ------------------------------------------------------------------
+    elif action == "pick":
+        approach = poses[cmd["approach"]]
+        pick     = poses[cmd["pick"]]
+        retreat  = poses[cmd["retreat"]]
+
+        move_pose(rtde_c, approach, speed, acc)
+        move_pose(rtde_c, pick, speed, acc)
+        # TODO later: close gripper
+        move_pose(rtde_c, retreat, speed, acc)
+
+    # ------------------------------------------------------------------
+    # PLACE ACTION: approach → drop → retreat
+    # ------------------------------------------------------------------
+    elif action == "place":
+        approach = poses[cmd["approach"]]
+        drop     = poses[cmd["drop"]]
+        retreat  = poses[cmd["retreat"]]
+
+        move_pose(rtde_c, approach, speed, acc)
+        move_pose(rtde_c, drop, speed, acc)
+        # TODO later: open gripper
+        move_pose(rtde_c, retreat, speed, acc)
 
     else:
-        print("Unknown action:", cmd)
+        print("[ERROR] Unknown action:", cmd)
 
     time.sleep(0.5)
-    # emergency stop
-    rtde_c.stopJ(acceleration=cmd.get("acc",ACC))
-    # disconnect safely
+    rtde_c.stopJ(acc)
+
+    #rtde_c.stopJ(acceleration=acc)
     rtde_c.disconnect()
-    
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python move_basic.py '<json_string>'")
-        sys.exit(1)
     cmd = json.loads(sys.argv[1])
     main(cmd)
